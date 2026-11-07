@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Lint, types, tests against Kafka 4.3 and PostgreSQL 17 (Python ${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    services:
+      kafka:
+        image: apache/kafka:4.3.2
+        ports: ["9092:9092"]
+        options: >-
+          --health-cmd "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"
+          --health-interval 5s --health-timeout 10s --health-retries 30
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: ci-only
+          POSTGRES_DB: txs
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d txs"
+          --health-interval 2s --health-timeout 2s --health-retries 20
+    env:
+      TXS_BOOTSTRAP: localhost:9092
+      TXS_DSN: postgresql://postgres:ci-only@localhost:5432/txs
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy
+      - name: Tests with coverage, including fencing, aborts and a fault-injection run
+        run: pytest --cov --cov-report=term-missing --cov-fail-under=90
+
+  fault-injection:
+    name: SIGKILL fault injection, both guarantees
+    runs-on: ubuntu-24.04
+    services:
+      kafka:
+        image: apache/kafka:4.3.2
+        ports: ["9092:9092"]
+        options: >-
+          --health-cmd "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"
+          --health-interval 5s --health-timeout 10s --health-retries 30
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: ci-only
+          POSTGRES_DB: txs
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d txs"
+          --health-interval 2s --health-timeout 2s --health-retries 20
+    env:
+      TXS_BOOTSTRAP: localhost:9092
+      TXS_DSN: postgresql://postgres:ci-only@localhost:5432/txs
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: Exactly-once must reconcile; at-least-once is reported for comparison
+        run: txs chaos --events 40000 --kills 12 --mode both --report fault-injection.md --check
+      - name: Throughput
+        run: |
+          txs bench --events 100000 --report throughput.md
+          cat throughput.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fault-injection
+          path: |
+            fault-injection.md
+            throughput.md
+            chaos-logs/
+
+  package:
+    name: Wheel builds and installs
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install build && python -m build
+      - run: |
+          python -m venv /tmp/venv
+          /tmp/venv/bin/pip install dist/*.whl
+          cd /tmp && /tmp/venv/bin/txs --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -e . pip-audit
+      - run: pip-audit --skip-editable
