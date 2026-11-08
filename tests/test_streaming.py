@@ -68,7 +68,7 @@ def test_aborted_transaction_is_retried_without_duplicates(bootstrap: str, topic
 
     p.fault = flaky
     stats = p.run(idle_exit=2)
-    assert stats.aborted == 1
+    assert stats.aborted >= 1  # the injected abort, and any follow-on abort while the producer recovers
     PostgresSink(bootstrap, topics, schema).run(idle_exit=2)
     assert reconcile(bootstrap, topics, schema, events).passed
 

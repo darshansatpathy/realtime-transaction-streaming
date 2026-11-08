@@ -4,6 +4,15 @@ All notable changes are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] - 2026-11-08
+
+### Fixed
+
+- The processor aborts and replays a batch on any non-fatal transaction error, not only on errors flagged as
+  abortable. After an abort that purged in-flight sends, the next transaction can be refused with a sequence gap
+  (librdkafka repairs it with an epoch bump); that refusal was raised as if fatal. Fatal errors, such as being
+  fenced by a newer instance, still stop the processor.
+
 ## [0.1.0] - 2026-11-08
 
 ### Added

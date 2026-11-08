@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "realtime-transaction-streaming"
-version = "0.1.0"
+version = "0.1.1"
 description = "Exactly-once payment processing on Kafka: transactional consume-process-produce, a sink that stores offsets with the data, independent reconciliation, and fault injection that proves it."
 readme = "README.md"
 license = { text = "MIT" }

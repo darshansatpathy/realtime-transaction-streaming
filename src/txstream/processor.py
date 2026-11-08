@@ -225,12 +225,16 @@ class Processor:
             self.producer.commit_transaction(30)
         except KafkaException as exc:
             error = exc.args[0]
-            if error.txn_requires_abort():
-                self.producer.abort_transaction(30)
-                self.stats.aborted += 1
-                self._rewind(msgs)
-                return
-            raise  # fatal, including being fenced by a newer instance
+            if error.fatal():
+                raise  # including being fenced by a newer instance
+            # Any other failure leaves the transaction abortable: an abortable commit error, or a
+            # produce refused because a send in this transaction already failed (for example a
+            # sequence gap after the previous abort, which librdkafka repairs with an epoch bump).
+            # Abort, discard the batch's outputs and decisions, and replay it from its offsets.
+            self.producer.abort_transaction(30)
+            self.stats.aborted += 1
+            self._rewind(msgs)
+            return
         self.accounts.update(accounts)
         self.seen |= seen
         self.stats.batches += 1
