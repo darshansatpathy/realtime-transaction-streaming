@@ -1,7 +1,7 @@
 # A local broker and database. Then: TXS_BOOTSTRAP=localhost:9092 TXS_DSN=postgresql://postgres:txs@localhost:5432/txs
 services:
   kafka:
-    image: apache/kafka:4.3.2
+    image: apache/kafka:4.4.0
     ports: ["9092:9092"]
     healthcheck:
       test: ["CMD", "/opt/kafka/bin/kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]
