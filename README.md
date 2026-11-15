@@ -11,6 +11,9 @@
 sink that stays exactly-once when it is killed mid-write, and a reconciliation that proves it
 against an answer computed outside the pipeline.**
 
+> Reference implementation built on synthetic or public data. It distils patterns from production
+> work into code you can run and read; it is not a client system.
+
 ```
 gateway ──▶ payments ──▶ processor ──────────────▶ ledger ─────────▶ sink ──▶ PostgreSQL (or Snowflake)
  (retries,   (keyed by    one Kafka transaction:    (double-entry     one DB transaction:
